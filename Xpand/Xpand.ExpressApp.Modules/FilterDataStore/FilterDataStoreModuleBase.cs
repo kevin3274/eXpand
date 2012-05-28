@@ -15,6 +15,7 @@ using Xpand.ExpressApp.FilterDataStore.Model;
 using Xpand.Xpo.DB;
 using Xpand.Xpo.Filtering;
 using Xpand.ExpressApp.Core;
+using DevExpress.Persistent.Base;
 
 namespace Xpand.ExpressApp.FilterDataStore {
     public abstract class FilterDataStoreModuleBase : XpandModuleBase {
@@ -23,6 +24,7 @@ namespace Xpand.ExpressApp.FilterDataStore {
         }
 
         protected static Dictionary<string, Type> _tablesDictionary;
+        private Dictionary<ITypeInfo, ITypeInfo> _BaseTypesDictionary = new Dictionary<ITypeInfo,ITypeInfo>();
         public override void Setup(XafApplication application) {
             base.Setup(application);
             application.CreateCustomObjectSpaceProvider += ApplicationOnCreateCustomObjectSpaceProvider;
@@ -58,14 +60,16 @@ namespace Xpand.ExpressApp.FilterDataStore {
             base.CustomizeTypesInfo(typesInfo);
             if (FilterProviderManager.IsRegistered && FilterProviderManager.Providers != null) {
                 SubscribeToDataStoreProxyEvents();
-                CreateMembers(typesInfo);
+                
                 foreach (var persistentType in typesInfo.PersistentTypes.Where(info => info.IsPersistent)) {
+                    GetBaseTypeInfo(persistentType);
                     var xpClassInfo = XafTypesInfo.XpoTypeInfoSource.GetEntityClassInfo(persistentType.Type);
                     if (xpClassInfo.TableName != null && xpClassInfo.ClassType != null) {
                         if (!IsMappedToParent(xpClassInfo))
                             _tablesDictionary.Add(xpClassInfo.TableName, xpClassInfo.ClassType);
                     }
                 }
+                CreateMembers(typesInfo);
             }
         }
 
@@ -75,12 +79,30 @@ namespace Xpand.ExpressApp.FilterDataStore {
                    ((MapInheritanceAttribute)attributeInfo).MapType == MapInheritanceType.ParentTable;
         }
 
+        private ITypeInfo GetBaseTypeInfo(ITypeInfo typeInfo)
+        {
+            ITypeInfo persistentBaseInfo = typeInfo;
+            if (_BaseTypesDictionary.TryGetValue(typeInfo, out persistentBaseInfo))
+                return persistentBaseInfo;
+            for (var baseInfo = typeInfo; baseInfo != null; baseInfo = baseInfo.Base)
+            {
+                if (baseInfo.IsPersistent)
+                    persistentBaseInfo = baseInfo;
+            }
+            _BaseTypesDictionary.Add(typeInfo, persistentBaseInfo);
+            return persistentBaseInfo;
+        }
         void CreateMembers(ITypesInfo typesInfo) {
             foreach (FilterProviderBase provider in FilterProviderManager.Providers) {
-                FilterProviderBase provider1 = provider;
                 foreach (ITypeInfo typeInfo in typesInfo.PersistentTypes.Where(
-                    typeInfo => (provider1.ObjectType == null || provider1.ObjectType == typeInfo.Type) && typeInfo.FindMember(provider1.FilterMemberName) == null && typeInfo.IsPersistent)) {
-                    CreateMember(typeInfo, provider);
+                    typeInfo => (provider.ObjectTypes == null 
+                        || provider.ObjectTypes.Length == 0 
+                        || provider.ObjectTypes.Contains(typeInfo.Type)) 
+                       && typeInfo.IsPersistent)) {
+                           var baseInfo = GetBaseTypeInfo(typeInfo);
+                           
+                    if (baseInfo.FindMember(provider.FilterMemberName) == null )
+                        CreateMember(baseInfo, provider);
                 }
             }
         }
@@ -116,10 +138,14 @@ namespace Xpand.ExpressApp.FilterDataStore {
         public void UpdateData(IEnumerable<UpdateStatement> statements) {
             foreach (UpdateStatement statement in statements) {
                 if (!IsSystemTable(statement.TableName)) {
+                    var objectType = GetObjectType(statement.TableName);
+                    if (objectType == null) continue;
+                    if (!_BaseTypesDictionary.ContainsValue(XafTypesInfo.CastTypeToTypeInfo(objectType))) continue;
+
                     List<QueryOperand> operands = statement.Operands.OfType<QueryOperand>().ToList();
                     for (int i = 0; i < operands.Count(); i++) {
                         int index = i;
-                        FilterProviderBase providerBase = FilterProviderManager.GetFilterProvider(statement.TableName, operands[index].ColumnName, StatementContext.Update);
+                        FilterProviderBase providerBase = FilterProviderManager.GetFilterProvider(objectType, operands[index].ColumnName, StatementContext.Update);
                         if (providerBase != null && !FilterIsShared(statement.TableName, providerBase.Name))
                             statement.Parameters[i].Value = GetModifyFilterValue(providerBase);
                     }
@@ -138,10 +164,14 @@ namespace Xpand.ExpressApp.FilterDataStore {
         public void InsertData(IList<InsertStatement> statements) {
             foreach (InsertStatement statement in statements) {
                 if (!IsSystemTable(statement.TableName)) {
+                    var objectType = GetObjectType(statement.TableName);
+                    if (objectType == null) continue;
+                    if (!_BaseTypesDictionary.ContainsValue(XafTypesInfo.CastTypeToTypeInfo(objectType))) continue;
+
                     List<QueryOperand> operands = statement.Operands.OfType<QueryOperand>().ToList();
                     for (int i = 0; i < operands.Count(); i++) {
                         FilterProviderBase providerBase =
-                            FilterProviderManager.GetFilterProvider(statement.TableName, operands[i].ColumnName, StatementContext.Insert);
+                            FilterProviderManager.GetFilterProvider(objectType, operands[i].ColumnName, StatementContext.Insert);
                         if (providerBase != null && !FilterIsShared(statements, providerBase))
                             statement.Parameters[i].Value = GetModifyFilterValue(providerBase);
                     }
@@ -164,26 +194,125 @@ namespace Xpand.ExpressApp.FilterDataStore {
             extractor.Extract(statement.Condition);
 
             foreach (FilterProviderBase provider in FilterProviderManager.Providers) {
-                FilterProviderBase providerBase = FilterProviderManager.GetFilterProvider(statement.TableName, provider.FilterMemberName, StatementContext.Select);
+                Type objectType = null;
+                if (!_tablesDictionary.TryGetValue(statement.TableName, out objectType))
+                    continue;
+                FilterProviderBase providerBase = FilterProviderManager.GetFilterProvider(objectType, provider.FilterMemberName, StatementContext.Select);
                 if (providerBase != null) {
                     IEnumerable<BinaryOperator> binaryOperators = GetBinaryOperators(extractor, providerBase);
                     if (!FilterIsShared(statement.TableName, providerBase.Name) && binaryOperators.Count() == 0) {
                         string nodeAlias = GetNodeAlias(statement, providerBase);
-                        ApplyCondition(statement, providerBase, nodeAlias);
+                        if (!string.IsNullOrEmpty(nodeAlias))
+                            ApplyCondition(statement, providerBase, nodeAlias);
                     }
                 }
             }
             return statement;
         }
 
+        public class FilterKeyProcesor : CriteriaProcessorBase, IQueryCriteriaVisitor
+        {
+            private bool _ContainsKey;
+            private string _KeyColumnName;
+            private string _NodeAlias;
+            public FilterKeyProcesor(string keyColumnName,string nodeAlias)
+            {
+                _KeyColumnName = keyColumnName;
+                _NodeAlias = nodeAlias;
+                _ContainsKey = false;
+            }
+
+
+            public bool ContainsKey
+            {
+                get { return _ContainsKey; }
+            }
+            
+
+            protected override void Process(BinaryOperator theOperator)
+            {
+                base.Process(theOperator);
+                var left = theOperator.LeftOperand as QueryOperand;
+                if (!object.ReferenceEquals(left, null) && left.ColumnName == _KeyColumnName && left.NodeAlias == _NodeAlias)
+                    _ContainsKey = true;
+                else
+                {
+                    var right = theOperator.RightOperand as QueryOperand;
+                    if (!object.ReferenceEquals(null, right) && right.ColumnName == _KeyColumnName && right.NodeAlias == _NodeAlias)
+                        _ContainsKey = true;
+                }
+            }
+
+            protected override void Process(InOperator theOperator)
+            {
+                base.Process(theOperator);
+                var leftOperand = theOperator.LeftOperand as QueryOperand;
+                if (!object.ReferenceEquals(leftOperand, null))
+                {
+                    if (leftOperand.ColumnName == _KeyColumnName && leftOperand.NodeAlias == _NodeAlias)
+                        _ContainsKey = true;
+                }
+
+
+            }
+
+            public object Visit(QuerySubQueryContainer theOperand)
+            {
+                return null;
+            }
+
+            public object Visit(QueryOperand theOperand)
+            {
+                return null;
+            }
+        }
+
+        private bool FilteredByKey(SelectStatement statement, Type objectType)
+        {
+            var keyColumnName = XafTypesInfo.XpoTypeInfoSource.GetEntityClassInfo(objectType).KeyProperty.Name;
+            FilterKeyProcesor procesor = new FilterKeyProcesor(keyColumnName,statement.Alias);
+            procesor.Process(statement.Condition);
+            return procesor.ContainsKey;
+        }
         void ApplyCondition(SelectStatement statement, FilterProviderBase providerBase, string nodeAlias) {
+            var objectType = GetObjectType(statement.TableName);
+            if (FilteredByKey(statement, objectType)) return;
+            CriteriaOperator condition = null;
             if (providerBase.FilterValue is IList) {
                 CriteriaOperator criteriaOperator = ((IEnumerable)providerBase.FilterValue).Cast<object>().Aggregate<object, CriteriaOperator>(null, (current, value)
-                    => current | new QueryOperand(providerBase.FilterMemberName, nodeAlias) == value.ToString());
+                    => current | (
+                        value == null 
+                            ? (CriteriaOperator)new QueryOperand(providerBase.FilterMemberName, nodeAlias).IsNull()
+                            : new QueryOperand(providerBase.FilterMemberName, nodeAlias) == new OperandValue( value)));
                 criteriaOperator = new GroupOperator(criteriaOperator);
-                statement.Condition &= criteriaOperator;
+                condition = criteriaOperator;
             } else
-                statement.Condition &= new QueryOperand(providerBase.FilterMemberName, nodeAlias) == (providerBase.FilterValue == null ? null : providerBase.FilterValue.ToString());
+                condition = new QueryOperand(providerBase.FilterMemberName, nodeAlias) == (providerBase.FilterValue == null ? null : providerBase.FilterValue.ToString());
+
+            
+            if (objectType != null)
+            {
+                var typeInfo = XafTypesInfo.CastTypeToTypeInfo(objectType);
+                if (typeInfo.OwnMembers.FirstOrDefault(x=>x.Name == "ObjectType") != null)
+                {
+                    
+                     var excludes = new List<Type>();
+                    foreach (var item in _BaseTypesDictionary.Where(x => x.Value == typeInfo).Select(x => x.Key))
+                    {
+                        if (FilterProviderManager.GetFilterProvider(item.Type,providerBase.FilterMemberName,StatementContext.Select) == null)
+                            excludes.Add(item.Type);
+                    }
+
+                    if (excludes.Count > 0)
+                    {
+                        var table = XafTypesInfo.XpoTypeInfoSource.GetEntityClassInfo(typeof(XPObjectType)).Table;
+                        statement.SubNodes.Add(new JoinNode(table,"OT",JoinType.Inner){Condition = new QueryOperand("ObjectType",statement.Alias) == new QueryOperand("OId","OT")});
+                        condition |= new InOperator(new QueryOperand("TypeName","OT"),excludes.Select(x=>new OperandValue( x.FullName)).ToArray());
+                    }
+                }
+            }
+
+            statement.Condition &= new GroupOperator(condition);
         }
 
         IEnumerable<BinaryOperator> GetBinaryOperators(CriteriaOperatorExtractor extractor, FilterProviderBase providerBase) {
@@ -208,11 +337,17 @@ namespace Xpand.ExpressApp.FilterDataStore {
                     throw new ArgumentException(statement.TableName);
             }
 
-            var fullName = _tablesDictionary[statement.TableName].FullName;
-            if (XafTypesInfo.Instance.FindTypeInfo(fullName).OwnMembers.Where(member => member.Name == filterMemberName).FirstOrDefault() == null) {
-                return statement.SubNodes[0].Alias;
+            var typeInfo = _BaseTypesDictionary[XafTypesInfo.CastTypeToTypeInfo(GetObjectType(statement.TableName))];
+            var baseTableName = XafTypesInfo.XpoTypeInfoSource.GetEntityClassInfo(typeInfo.Type).Table.Name;
+            if (statement.TableName == baseTableName)
+                return statement.Alias;
+            foreach (var node in statement.SubNodes)
+            {
+            	if (node.TableName == baseTableName)
+                    return node.Alias;
             }
-            return statement.Alias;
+            
+            return null;
         }
 
 
@@ -241,6 +376,15 @@ namespace Xpand.ExpressApp.FilterDataStore {
 
         IModelClass GetModelClass(string tableName) {
             return Application.Model.BOModel[_tablesDictionary[tableName].FullName];
+        }
+
+        Type GetObjectType(string tableName)
+        {
+            Type result = null;
+            if (_tablesDictionary.TryGetValue(tableName, out result))
+                return result;
+            else
+                return null;
         }
     }
 }

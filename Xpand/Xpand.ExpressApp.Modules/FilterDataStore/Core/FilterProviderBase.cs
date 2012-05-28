@@ -39,6 +39,17 @@ namespace Xpand.ExpressApp.FilterDataStore.Core {
         public abstract bool FilterMemberIndexed { get; set; }
         public abstract bool UseFilterValueWhenNull { get; set; }
         public abstract Type FilterMemberType { get; set; }
+        [Obsolete("Use ObjectTypes instead")]
         public virtual Type ObjectType { get; set; }
+        public virtual Type[] ObjectTypes 
+        { 
+            get{
+                if (ObjectType != null)
+                    return new Type[] { ObjectType };
+                else
+                    return new Type[] { };
+            }
+            set { }
+        }
     }
 }

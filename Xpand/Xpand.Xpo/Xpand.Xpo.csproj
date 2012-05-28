@@ -93,6 +93,7 @@
     <Compile Include="Attributes\AggregatedDelete.cs" />
     <Compile Include="Attributes\Encrypt.cs" />
     <Compile Include="ChangedMemberCollector.cs" />
+    <Compile Include="XpandObjectLayer.cs" />
     <Compile Include="Collections\ManyToManyCollectionHelper.cs" />
     <Compile Include="Collections\XpandXPCollection.cs">
       <SubType>Component</SubType>

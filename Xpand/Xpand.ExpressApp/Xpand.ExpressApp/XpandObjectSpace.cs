@@ -62,6 +62,15 @@ namespace Xpand.ExpressApp {
         protected override UnitOfWork CreateUnitOfWork(IDataLayer dataLayer) {
             return new XpandUnitOfWork(dataLayer);
         }
+
+        protected override UnitOfWork RecreateUnitOfWork()
+        {
+            if (session.ObjectLayer != null)
+            {
+                return CreateUnitOfWork(session.ObjectLayer);
+            }
+            return CreateUnitOfWork(session.DataLayer);
+        }
     }
 
     public class NestedXpandObjectSpace : NestedObjectSpace {

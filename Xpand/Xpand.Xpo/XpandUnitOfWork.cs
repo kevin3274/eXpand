@@ -14,7 +14,7 @@ namespace Xpand.Xpo {
         }
 
         public XpandUnitOfWork(IDataLayer layer, params IDisposable[] disposeOnDisconnect)
-            : base(layer, disposeOnDisconnect) {
+            : base(new XpandObjectLayer(layer), disposeOnDisconnect) {
         }
 
         protected override MemberInfoCollection GetPropertiesListForUpdateInsert(object theObject, bool isUpdate) {
