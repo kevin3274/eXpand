@@ -351,7 +351,7 @@
 
   <UsingTask TaskName="MSBuild.ExtensionPack.Framework.Assembly" AssemblyFile="Resource\build\ExtensionPack\MSBuild.ExtensionPack.dll" />
 
-  <Target Name="_GetVersion" DependsOnTargets="" Condition="$(Version)=='0.0.0.0'">
+  <Target Name="_GetVersion" DependsOnTargets="Release;Copy" Condition="$(Version)=='0.0.0.0'">
     <MSBuild.ExtensionPack.Framework.Assembly  TaskAction="GetInfo" NetAssembly="$(TempPath)\Xpand.Utils.dll">
       <Output TaskParameter="OutputItems" ItemName="_VersionInfo"/>
     </MSBuild.ExtensionPack.Framework.Assembly>

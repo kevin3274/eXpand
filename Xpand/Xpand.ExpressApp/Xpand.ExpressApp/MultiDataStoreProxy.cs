@@ -114,9 +114,11 @@ namespace Xpand.ExpressApp {
                         throw new NullReferenceException();
                     if (!storeInfo.IsLegacy && !IsMainLayer(store.Connection))
                         _xpoObjectHacker.EnsureIsNotIdentity(dbTables);
-                    if (!(storeInfo.IsLegacy && dbTables.Count == 1 && dbTables[0].Name == typeof(XPObjectType).Name))
+                    if (!storeInfo.IsLegacy || (dbTables.Count == 1 && dbTables[0].Name == typeof(XPObjectType).Name))
+                    {
                         store.UpdateSchema(false, dbTables.ToArray());
-                    RunExtraUpdaters(tables, store, dontCreateIfFirstTableNotExist);
+                        RunExtraUpdaters(tables, store, dontCreateIfFirstTableNotExist);
+                    }
                 }
             }
             return UpdateSchemaResult.SchemaExists;
