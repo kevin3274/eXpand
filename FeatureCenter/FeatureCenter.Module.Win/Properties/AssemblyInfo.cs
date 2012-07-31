@@ -11,7 +11,7 @@ using Xpand.Utils.DependentAssembly;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("-")]
 [assembly: AssemblyProduct("FeatureCenter.Module.Win")]
-[assembly: AssemblyCopyright("Copyright © - 2007")]
+[assembly: AssemblyCopyright("Copyright ?- 2007")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
