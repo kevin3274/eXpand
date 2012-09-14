@@ -2,8 +2,11 @@
 using System.Collections.Generic;
 using System.IO;
 using DevExpress.ExpressApp;
+using DevExpress.ExpressApp.DC;
 using DevExpress.ExpressApp.Security;
+using DevExpress.ExpressApp.Xpo;
 using DevExpress.Persistent.Base.Security;
+using DevExpress.Xpo;
 using Xpand.ExpressApp.ModelDifference.DataStore.BaseObjects;
 using Xpand.ExpressApp.ModelDifference.DataStore.Queries;
 using Xpand.ExpressApp.ModelDifference.Security;
@@ -21,16 +24,13 @@ namespace FeatureCenter.Module.ApplicationDifferences {
 
 
         public override void UpdateDatabaseAfterUpdateSchema() {
-            var session = ((ObjectSpace)ObjectSpace).Session;
+            var session = ((XPObjectSpace)ObjectSpace).Session;
             if (new QueryModelDifferenceObject(session).GetActiveModelDifference(ModelCombine, FeatureCenterModule.Application) == null) {
                 new ModelDifferenceObject(session).InitializeMembers(ModelCombine, FeatureCenterModule.Application);
                 var role = Updater.EnsureRoleExists(ModelCombine, customizableRole => GetPermissions(customizableRole, Updater));
                 var user = Updater.EnsureUserExists(ModelCombine, ModelCombine, role);
-                if (!Updater.IsNewSecuritySystem)
-                    ((ICustomizableRole)role).Users.Add((IUser)user);
-                else {
-                    ((SecurityRole)role).Users.Add((SecurityUserWithRolesBase)user);
-                }
+                var collection = (XPBaseCollection)((XafMemberInfo)XafTypesInfo.Instance.FindTypeInfo(role.GetType()).FindMember("Users")).GetValue(role);
+                collection.BaseAdd(user);
                 ObjectSpace.CommitChanges();
             }
             var modelDifferenceObjects = new XpandXPCollection<ModelDifferenceObject>(session, o => o.PersistentApplication.Name == "FeatureCenter");
@@ -57,13 +57,11 @@ namespace FeatureCenter.Module.ApplicationDifferences {
             if (securityRole.Name == ModelCombine) {
                 var modelPermission = ObjectSpace.CreateObject<ModelOperationPermissionData>();
                 modelPermission.Save();
-                securityRole.BeginUpdate();
                 securityRole.Permissions.GrantRecursive(typeof(object), SecurityOperations.Read);
                 securityRole.Permissions.GrantRecursive(typeof(object), SecurityOperations.Write);
                 securityRole.Permissions.GrantRecursive(typeof(object), SecurityOperations.Create);
                 securityRole.Permissions.GrantRecursive(typeof(object), SecurityOperations.Delete);
                 securityRole.Permissions.GrantRecursive(typeof(object), SecurityOperations.Navigate);
-                securityRole.EndUpdate();
                 permissions.Add(modelPermission);
             }
         }

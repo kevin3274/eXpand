@@ -1,8 +1,12 @@
-﻿using System.ComponentModel;
+﻿using System;
+using System.ComponentModel;
 using DevExpress.ExpressApp;
 using DevExpress.ExpressApp.Actions;
+using DevExpress.ExpressApp.DC;
+using DevExpress.ExpressApp.DC.Xpo;
 using DevExpress.ExpressApp.Editors;
 using DevExpress.ExpressApp.SystemModule;
+using DevExpress.ExpressApp.Xpo;
 using DevExpress.Xpo;
 using Xpand.ExpressApp.WorldCreator.Controllers;
 using Xpand.Persistent.Base.PersistentMetaData;
@@ -27,14 +31,15 @@ namespace Xpand.ExpressApp.WorldCreator.DBMapper {
         }
 
         void ObjectSpaceOnCommitting(object sender, CancelEventArgs cancelEventArgs) {
-            var objectSpace = new ObjectSpace(new UnitOfWork(((ObjectSpace)ObjectSpace).Session.DataLayer), XafTypesInfo.Instance);
+            var objectSpace = new XPObjectSpace(XafTypesInfo.Instance, XpandModuleBase.XpoTypeInfoSource, () => new UnitOfWork(((XPObjectSpace)ObjectSpace).Session.DataLayer));
             Frame nestedFrame = View.GetItems<ListPropertyEditor>().Single().Frame;
             var listEditor = ((ListView)nestedFrame.View).Editor;
             string[] selectedTables = listEditor.GetSelectedObjects().OfType<DataTable>().Select(table => table.Name).ToArray();
             CreateMappedAssemblyInfo(objectSpace, _assemblyInfo, (LogonObject)View.CurrentObject, selectedTables);
         }
-        void CreateMappedAssemblyInfo(ObjectSpace objectSpace, IPersistentAssemblyInfo persistentAssemblyInfo, LogonObject logonObject, string[] selectedTables) {
-            new AssemblyGenerator(logonObject, objectSpace.GetObject(persistentAssemblyInfo), selectedTables).Create();
+        void CreateMappedAssemblyInfo(XPObjectSpace objectSpace, IPersistentAssemblyInfo persistentAssemblyInfo, LogonObject logonObject, string[] selectedTables) {
+            var assemblyInfo = objectSpace.GetObject(persistentAssemblyInfo);
+            new AssemblyGenerator(logonObject, assemblyInfo, selectedTables).Create();
             objectSpace.CommitChanges();
         }
 

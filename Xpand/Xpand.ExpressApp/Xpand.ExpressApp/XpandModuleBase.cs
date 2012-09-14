@@ -2,98 +2,105 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Configuration;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using DevExpress.ExpressApp;
 using DevExpress.ExpressApp.DC;
+using DevExpress.ExpressApp.DC.Xpo;
 using DevExpress.ExpressApp.Model;
 using DevExpress.ExpressApp.Model.Core;
+using DevExpress.ExpressApp.Security;
+using DevExpress.ExpressApp.Xpo;
 using DevExpress.Persistent.Base;
 using DevExpress.Xpo;
 using DevExpress.Xpo.Metadata;
 
 namespace Xpand.ExpressApp {
     [ToolboxItem(false)]
-    public class XpandModuleBase : ModuleBase {
+    public abstract class XpandModuleBase : ModuleBase {
+        static List<object> _storeManagers;
+        public static XPDictionary Dictiorary { get; set; }
+        public static ITypesInfo TypesInfo { get; set; }
         public static string ManifestModuleName;
         static readonly object _lockObject = new object();
         static IValueManager<ModelApplicationCreator> _instanceModelApplicationCreatorManager;
         public static object Control;
         static Assembly _baseImplAssembly;
-        private readonly Boolean isModuleBase;
 
-        public XpandModuleBase() {
-
-            isModuleBase = (GetType() == typeof(ModuleBase));
-            if (isModuleBase) return;
+        static XpandModuleBase() {
+            Dictiorary = XpoTypesInfoHelper.GetXpoTypeInfoSource().XPDictionary;
+            TypesInfo = XafTypesInfo.Instance;
         }
+
+        static void LoadBaseImplAssembly() {
+            var assemblyString = "Xpand.Persistent.BaseImpl, Version=*, Culture=neutral, PublicKeyToken=*";
+            var baseImplName = ConfigurationManager.AppSettings["Baseimpl"];
+            if (!String.IsNullOrEmpty(baseImplName)) {
+                assemblyString = baseImplName;
+            }
+            _baseImplAssembly = Assembly.Load(assemblyString);
+            if (_baseImplAssembly == null)
+                throw new NullReferenceException(
+                    "BaseImpl not found please reference it in your front end project and set its Copy Local=true");
+        }
+
+        public static Type UserType { get; set; }
+
+        public static Type RoleType { get; set; }
 
         protected bool RuntimeMode {
             get {
-                return Application != null && Application.Title != "devenv";
-                //                return Application != null && Application.Security != null;
+                var devProcceses = new[] { "Xpand.ExpressApp.ModelEditor", "devenv" };
+                return !devProcceses.Contains(Process.GetCurrentProcess().ProcessName) && LicenseManager.UsageMode != LicenseUsageMode.Designtime;
+            }
+        }
+        protected override IEnumerable<Type> GetDeclaredExportedTypes() {
+            if (IsLoadingExternalModel()) {
+                var declaredExportedTypes = new List<Type>();
+                var collectExportedTypesFromAssembly = CollectExportedTypesFromAssembly(GetType().Assembly).Where(IsExportedType);
+                foreach (var type in collectExportedTypesFromAssembly) {
+                    var typeInfo = TypesInfo.FindTypeInfo(type);
+                    declaredExportedTypes.Add(type);
+                    foreach (Type type1 in CollectRequiredTypes(typeInfo)) {
+                        if (!declaredExportedTypes.Contains(type1))
+                            declaredExportedTypes.Add(type1);
+                    }
+                }
+                return declaredExportedTypes;
+            }
+            return base.GetDeclaredExportedTypes();
+        }
+
+        void AssignSecurityEntities() {
+            if (Application != null) {
+                var roleTypeProvider = Application.Security as IRoleTypeProvider;
+                if (roleTypeProvider != null) {
+                    RoleType = XafTypesInfo.Instance.PersistentTypes.Single(info => info.Type == roleTypeProvider.RoleType).Type;
+                    if (RoleType.IsInterface)
+                        RoleType = XpoTypeInfoSource.GetGeneratedEntityType(RoleType);
+                }
+                if (Application.Security != null) {
+                    UserType = Application.Security.UserType;
+                    if (UserType != null && UserType.IsInterface)
+                        UserType = XpoTypeInfoSource.GetGeneratedEntityType(UserType);
+                }
             }
         }
 
-        [Obsolete("Use the \'GetDeclaredExportedTypes()\' method instead.")]
-        protected override BusinessClassesList GetBusinessClassesCore() {
-            if (IsLoadingExternalModel()) {
-                var resultBusinessClasses = new ExternalModelBusinessClassesList();
-                resultBusinessClasses.AddRange(DeclaredBusinessClasses, false, RequiredTypeEntry.ReasonDeclaredInModule);
-                return resultBusinessClasses;
-            }
-            return base.GetBusinessClassesCore();
+        IEnumerable<Type> CollectRequiredTypes(ITypeInfo typeInfo) {
+            return (typeInfo.GetRequiredTypes(info => IsExportedType(info.Type)).Select(required => required.Type));
         }
 
         bool IsLoadingExternalModel() {
             return TypesInfo != XafTypesInfo.Instance;
         }
 
-        class ExternalModelBusinessClassesList : BusinessClassesList {
-            private bool EntityFilterPredicate(ITypeInfo info) {
-                return info.IsDomainComponent;
-            }
-
-            private IEnumerable<Type> CollectRequiredTypes(ITypeInfo typeInfo) {
-                return (from required in typeInfo.GetRequiredTypes(EntityFilterPredicate) where required.IsDomainComponent select required.Type).ToList();
-            }
-
-            protected override void InsertItem(int index, Type item) {
-                ITypeInfo typeInfo = TypesInfo.FindTypeInfo(item);
-                if (!Items.Contains(item) && typeInfo.IsDomainComponent) {
-                    base.InsertItem(index, item);
-                    foreach (Type type in CollectRequiredTypes(typeInfo).Where(type => !Items.Contains(type))) {
-                        Items.Add(type);
-                    }
-                }
-            }
-        }
         public Assembly BaseImplAssembly {
             get {
-                if (_baseImplAssembly == null) {
-                    var assemblyString = "Xpand.Persistent.BaseImpl, Version=*, Culture=neutral, PublicKeyToken=*";
-                    var baseImplName = ConfigurationManager.AppSettings["Baseimpl"];
-                    if (!String.IsNullOrEmpty(baseImplName)) {
-                        assemblyString = baseImplName;
-                    }
-                    _baseImplAssembly = Assembly.Load(assemblyString);
-                    if (_baseImplAssembly == null)
-                        throw new NullReferenceException("BaseImpl not found please reference it in your front end project and set its Copy Local=true");
-                }
+                if (_baseImplAssembly == null)
+                    LoadBaseImplAssembly();
                 return _baseImplAssembly;
-            }
-        }
-        private List<Type> declaredBusinessClasses;
-        [Obsolete("Use the \'GetDeclaredExportedTypes()\' method instead.")]
-        protected override List<Type> DeclaredBusinessClasses {
-            get {
-                if (declaredBusinessClasses == null) {
-                    declaredBusinessClasses = new List<Type>();
-                    if (!isModuleBase && AutomaticCollectDomainComponents) {
-                        declaredBusinessClasses.AddRange(CollectExportedTypesFromAssembly(GetType().Assembly));
-                    }
-                }
-                return declaredBusinessClasses;
             }
         }
 
@@ -102,7 +109,7 @@ namespace Xpand.ExpressApp {
             try {
                 TypesInfo.LoadTypes(assembly);
                 if (assembly == typeof(XPObject).Assembly) {
-                    typesList.AddRange(DevExpress.ExpressApp.DC.Xpo.XpoTypeInfoSource.XpoBaseClasses);
+                    typesList.AddRange(XpoTypeInfoSource.XpoBaseClasses);
                 } else {
                     typesList.AddRange(assembly.GetTypes());
                 }
@@ -131,9 +138,13 @@ namespace Xpand.ExpressApp {
             }
         }
 
+        public static XpoTypeInfoSource XpoTypeInfoSource {
+            get { return XpoTypesInfoHelper.GetXpoTypeInfoSource(); }
+        }
+
         protected void AddToAdditionalExportedTypes(string[] types) {
             if (RuntimeMode) {
-                var types1 = BaseImplAssembly.GetTypes().Where(type1 =>types.Contains(type1.FullName));
+                var types1 = BaseImplAssembly.GetTypes().Where(type1 => types.Contains(type1.FullName));
                 AdditionalExportedTypes.AddRange(types1);
             }
 
@@ -147,41 +158,19 @@ namespace Xpand.ExpressApp {
         }
 
         protected void CreateDesignTimeCollection(ITypesInfo typesInfo, Type classType, string propertyName) {
-            XPClassInfo info = XafTypesInfo.XpoTypeInfoSource.XPDictionary.GetClassInfo(classType);
+            XPClassInfo info = Dictiorary.GetClassInfo(classType);
             if (info.FindMember(propertyName) == null) {
                 info.CreateMember(propertyName, typeof(XPCollection), true);
+                info.AddAttribute(new VisibleInDetailViewAttribute(false));
                 typesInfo.RefreshInfo(classType);
             }
         }
 
-
-        static List<object> _storeManagers;
-
-
-        static XpandModuleBase() {
-            Dictiorary = XafTypesInfo.XpoTypeInfoSource.XPDictionary;
-            TypesInfo = XafTypesInfo.Instance;
-        }
-
-
-
-        public static XPDictionary Dictiorary { get; set; }
-
-        public static ITypesInfo TypesInfo { get; set; }
-
-        public BusinessClassesList GetAdditionalClasses(ApplicationModulesManager manager) {
+        public IList<Type> GetAdditionalClasses(ApplicationModulesManager manager) {
             return GetAdditionalClasses(manager.Modules);
         }
-        public BusinessClassesList GetAdditionalClasses(ModuleList moduleList) {
-#pragma warning disable 612,618
-            var businessClassesList = new BusinessClassesList(moduleList.SelectMany(@base => @base.AdditionalBusinessClasses));
-            businessClassesList.AddRange(
-                moduleList.SelectMany(moduleBase => moduleBase.BusinessClassAssemblies.GetBusinessClasses()));
-#pragma warning restore 612,618
-
-            businessClassesList.AddRange(moduleList.SelectMany(@base => @base.AdditionalExportedTypes));
-
-            return businessClassesList;
+        public IList<Type> GetAdditionalClasses(ModuleList moduleList) {
+            return new List<Type>(moduleList.SelectMany(@base => @base.AdditionalExportedTypes));
         }
 
         public override void Setup(ApplicationModulesManager moduleManager) {
@@ -190,11 +179,19 @@ namespace Xpand.ExpressApp {
         }
         public override void Setup(XafApplication application) {
             base.Setup(application);
+            if (!ApplicationType().IsInstanceOfType(application))
+                throw new TypeInitializationException(application.GetType().FullName, new Exception("Please derive your " + application.GetType().FullName + " from either XpandWinApplication or XpandWebApplication"));
             if (ManifestModuleName == null)
                 ManifestModuleName = application.GetType().Assembly.ManifestModule.Name;
             OnApplicationInitialized(application);
             application.SetupComplete += ApplicationOnSetupComplete;
         }
+
+        protected Type DefaultXafAppType = typeof(XafApplication);
+        protected virtual Type ApplicationType() {
+            return DefaultXafAppType;
+        }
+
         public override void CustomizeTypesInfo(ITypesInfo typesInfo) {
             base.CustomizeTypesInfo(typesInfo);
             OnApplicationInitialized(Application);
@@ -230,6 +227,7 @@ namespace Xpand.ExpressApp {
         }
 
         void ApplicationOnSetupComplete(object sender, EventArgs eventArgs) {
+            AssignSecurityEntities();
             lock (_lockObject) {
                 if (_instanceModelApplicationCreatorManager == null)
                     _instanceModelApplicationCreatorManager = ValueManager.GetValueManager<ModelApplicationCreator>("instanceModelApplicationCreatorManager");

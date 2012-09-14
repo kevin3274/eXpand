@@ -6,13 +6,14 @@ using DevExpress.ExpressApp;
 using DevExpress.ExpressApp.Core;
 using DevExpress.ExpressApp.Editors;
 using DevExpress.ExpressApp.Security;
+using DevExpress.ExpressApp.Win;
 using DevExpress.ExpressApp.Win.Editors;
 using DevExpress.ExpressApp.Win.SystemModule;
 using DevExpress.Persistent.BaseImpl;
 using DevExpress.Xpo;
 using TypeMock.ArrangeActAssert;
-using Xpand.ExpressApp;
 using Xpand.ExpressApp.IO.Core;
+using Xpand.ExpressApp.Win;
 using Xpand.Persistent.BaseImpl.ImportExport;
 using System.Linq;
 
@@ -55,11 +56,12 @@ namespace Xpand.Tests {
 
         public static void XafApplicationInstance(this IFaker faker, Action<XafApplication> action, Func<IList<Type>> func, Action<DetailView> viewAction, Action<Window> windowAction, params Controller[] controllers) {
             var dataSet = new DataSet();
-            IObjectSpace objectSpace = ObjectSpaceInMemory.CreateNew(dataSet);
+            IObjectSpace XPObjectSpace = ObjectSpaceInMemory.CreateNew(dataSet);
             XafApplication application = Isolate.Fake.XafApplicationInstance(func, dataSet, controllers);
             action.Invoke(application);
-            object o = objectSpace.CreateObject(func.Invoke().ToList().First());
-            var detailView = application.CreateDetailView(objectSpace, o);
+            application.ShowViewStrategy = new MdiShowViewStrategy(application);
+            object o = XPObjectSpace.CreateObject(func.Invoke().ToList().First());
+            var detailView = application.CreateDetailView(XPObjectSpace, o);
             viewAction.Invoke(detailView);
             var window = application.CreateWindow(TemplateContext.View, controllers, true);
             windowAction.Invoke(window);
@@ -67,6 +69,12 @@ namespace Xpand.Tests {
 
         }
 
+        public class WXafApplication : XpandWinApplication {
+            public WXafApplication() {
+                Security = new SecurityComplex();
+                ShowViewStrategy = new MdiShowViewStrategy(this);
+            }
+        }
         public static XafApplication XafApplicationInstance(this IFaker faker, Func<IList<Type>> func, DataSet dataSet, params Controller[] controllers) {
             var defaultSkinListGenerator = Isolate.Fake.Instance<DefaultSkinListGenerator>();
             var editorsFactory = new EditorsFactory();
@@ -76,13 +84,13 @@ namespace Xpand.Tests {
             Isolate.Swap.AllInstances<EditorsFactory>().With(editorsFactory);
 
             Isolate.Swap.NextInstance<DefaultSkinListGenerator>().With(defaultSkinListGenerator);
-            var application = Isolate.Fake.Instance<XafApplication>(Members.CallOriginal, ConstructorWillBe.Called);
+            var application = Isolate.Fake.Instance<XpandWinApplication>();
             RegisterControllers(application, controllers);
-            var xpandModuleBase = Isolate.Fake.Instance<XpandModuleBase>(Members.CallOriginal, ConstructorWillBe.Called);
-            xpandModuleBase.Setup(application);
-            var objectSpaceProvider = Isolate.Fake.Instance<IObjectSpaceProvider>();
-            Isolate.WhenCalled(() => objectSpaceProvider.TypesInfo).WillReturn(XafTypesInfo.Instance);
-            application.CreateCustomObjectSpaceProvider += (sender, args) => args.ObjectSpaceProvider = objectSpaceProvider;
+            //            var xpandModuleBase = Isolate.Fake.Instance<XpandModuleBase>(Members.CallOriginal, ConstructorWillBe.Called);
+            //            xpandModuleBase.Setup(application);
+            var XPObjectSpaceProvider = Isolate.Fake.Instance<IObjectSpaceProvider>();
+            Isolate.WhenCalled(() => XPObjectSpaceProvider.TypesInfo).WillReturn(XafTypesInfo.Instance);
+            application.CreateCustomObjectSpaceProvider += (sender, args) => args.ObjectSpaceProvider = XPObjectSpaceProvider;
             RegisterDomainComponents(application, func);
             application.Setup();
             Isolate.WhenCalled(() => application.CreateObjectSpace()).WillReturn(ObjectSpaceInMemory.CreateNew(dataSet));
@@ -90,7 +98,7 @@ namespace Xpand.Tests {
             return application;
         }
 
-        static void RegisterDomainComponents(XafApplication application, Func<IList<Type>>func) {
+        static void RegisterDomainComponents(XafApplication application, Func<IList<Type>> func) {
             func.Invoke().ToList().ForEach(type => XafTypesInfo.Instance.RegisterEntity(type));
             application.SettingUp +=
                 (o, eventArgs) => func.Invoke().ToList().ForEach(type => ((ExportedTypeCollection)eventArgs.SetupParameters.DomainComponents).Add(type));
@@ -108,7 +116,7 @@ namespace Xpand.Tests {
         public static ISecurityComplex ISecurityComplex(this IFaker faker) {
             var securityComplex = Isolate.Fake.Instance<ISecurityComplex>();
             Isolate.WhenCalled(() => SecuritySystem.Instance).WillReturn(securityComplex);
-            Isolate.WhenCalled(() => securityComplex.RoleType).WillReturn(typeof(Role));
+            Isolate.WhenCalled(() => ((IRoleTypeProvider)securityComplex).RoleType).WillReturn(typeof(Role));
             Isolate.WhenCalled(() => securityComplex.UserType).WillReturn(typeof(User));
 
             Isolate.Fake.StaticMethods(typeof(SecuritySystem));
@@ -118,7 +126,7 @@ namespace Xpand.Tests {
             user.Save();
             Isolate.WhenCalled(() => SecuritySystem.CurrentUser).WillReturn(user);
 
-            XafTypesInfo.Instance.RegisterEntity(securityComplex.RoleType);
+            XafTypesInfo.Instance.RegisterEntity(((IRoleTypeProvider)securityComplex).RoleType);
             XafTypesInfo.Instance.RegisterEntity(securityComplex.UserType);
             return securityComplex;
         }

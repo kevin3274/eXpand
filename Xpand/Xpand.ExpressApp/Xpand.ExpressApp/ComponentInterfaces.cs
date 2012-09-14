@@ -7,9 +7,6 @@ using DevExpress.ExpressApp.Utils;
 using DevExpress.Xpo.DB;
 
 namespace Xpand.ExpressApp {
-    internal interface ISupportCustomListEditorCreation {
-        event EventHandler<CreatingListEditorEventArgs> CustomCreateListEditor;
-    }
     public class CreatingListEditorEventArgs : HandledEventArgs {
         readonly IModelListView _modelListView;
         readonly CollectionSourceBase _collectionSource;
@@ -34,31 +31,32 @@ namespace Xpand.ExpressApp {
         void LogOff();
     }
 
-    internal interface IXafApplication {
-        IDataStore GetDataStore(IDataStore dataStore);
-        string RaiseEstablishingConnection();
-    }
-
-    internal interface ISupportFullConnectionString {
-        string ConnectionString { get; set; }
-    }
-
-    internal interface ISupportLogonParameterStore {
+    public interface ISettingsStorage {
         SettingsStorage CreateLogonParameterStoreCore();
-        void WriteLastLogonParameters(DetailView view, object logonObject);
     }
 
-    internal interface ISupportModelsManager {
-        ApplicationModelsManager ModelsManager { get; }
-    }
-
-    internal interface ISupportConfirmationRequired {
+    public interface IConfirmationRequired {
         event CancelEventHandler ConfirmationRequired;
     }
 
-    internal interface ISupportAfterViewShown {
+
+
+    internal interface IXafApplication : ISettingsStorage, IConfirmationRequired {
+        string ConnectionString { get; set; }
+        string ModelAssemblyFilePath { get; }
+        event EventHandler UserDifferencesLoaded;
+        IDataStore GetDataStore(IDataStore dataStore);
+        string RaiseEstablishingConnection();
+        ApplicationModulesManager ApplicationModulesManager { get; }
+
+        void WriteLastLogonParameters(DetailView view, object logonObject);
         event EventHandler<ViewShownEventArgs> AfterViewShown;
         void OnAfterViewShown(Frame frame, Frame sourceFrame);
     }
+
+
+
+
+
 
 }

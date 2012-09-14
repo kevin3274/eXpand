@@ -10,7 +10,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>Xpand.Utils</RootNamespace>
     <AssemblyName>Xpand.Utils</AssemblyName>
-    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AssemblyOriginatorKeyFile>..\..\Xpand.Key\Xpand.snk</AssemblyOriginatorKeyFile>
     <SignAssembly>true</SignAssembly>
@@ -34,6 +34,7 @@
     <IsWebBootstrapper>false</IsWebBootstrapper>
     <UseApplicationTrust>false</UseApplicationTrust>
     <BootstrapperEnabled>true</BootstrapperEnabled>
+    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -86,6 +87,7 @@
     <Compile Include="Automation\WaitAutomation.cs" />
     <Compile Include="Helpers\DateTimeUtils.cs" />
     <Compile Include="Helpers\EnumerableExtensions.cs" />
+    <Compile Include="Linq\Extensions.cs" />
     <Compile Include="Win32\Win32Constants.cs" />
     <Compile Include="Win32\Win32Declares.cs" />
     <Compile Include="Win32\Win32Types.cs" />

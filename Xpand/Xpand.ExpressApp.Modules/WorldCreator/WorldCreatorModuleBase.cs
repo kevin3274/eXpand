@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Diagnostics;
 using System.Linq;
 using DevExpress.ExpressApp;
 using DevExpress.ExpressApp.Model.Core;
+using DevExpress.ExpressApp.Xpo;
 using DevExpress.Persistent.Base;
 using DevExpress.Xpo;
 using DevExpress.Xpo.DB;
@@ -40,7 +40,8 @@ namespace Xpand.ExpressApp.WorldCreator {
         protected override void OnApplicationInitialized(XafApplication xafApplication) {
             if (xafApplication == null)
                 return;
-            _connectionString = xafApplication.GetConnectionString();
+            if (RuntimeMode)
+                _connectionString = xafApplication.GetConnectionString();
             base.OnApplicationInitialized(xafApplication);
         }
 
@@ -48,8 +49,7 @@ namespace Xpand.ExpressApp.WorldCreator {
 
         public override void Setup(ApplicationModulesManager moduleManager) {
             base.Setup(moduleManager);
-            var businessClassesList = GetAdditionalClasses(moduleManager);
-            WCTypesInfo.Instance.Register(businessClassesList);
+            WCTypesInfo.Instance.Register(GetAdditionalClasses(moduleManager));
             if (Application == null || GetPath() == null)
                 return;
             Application.SettingUp += ApplicationOnSettingUp;
@@ -70,12 +70,9 @@ namespace Xpand.ExpressApp.WorldCreator {
                 }
             }
 
-
             Application.SetupComplete += ApplicationOnSetupComplete;
 
         }
-
-
 
         void RunUpdaters(Session session) {
             foreach (WorldCreatorUpdater worldCreatorUpdater in GetWorldCreatorUpdaters(session)) {
@@ -85,7 +82,7 @@ namespace Xpand.ExpressApp.WorldCreator {
 
 
         void ApplicationOnSetupComplete(object sender, EventArgs eventArgs) {
-            var session = (((ObjectSpace)Application.ObjectSpaceProvider.CreateUpdatingObjectSpace(false))).Session;
+            var session = (((XPObjectSpace)Application.ObjectSpaceProvider.CreateUpdatingObjectSpace(false))).Session;
             mergeTypes(new UnitOfWork(session.DataLayer));
 
         }
@@ -102,12 +99,11 @@ namespace Xpand.ExpressApp.WorldCreator {
         }
 
         IEnumerable<WorldCreatorUpdater> GetWorldCreatorUpdaters(Session session) {
-            return XafTypesInfo.Instance.FindTypeInfo(typeof(WorldCreatorUpdater)).Descendants.Select(
-                typeInfo => (WorldCreatorUpdater)ReflectionHelper.CreateObject(typeInfo.Type, session));
+            return XafTypesInfo.Instance.FindTypeInfo(typeof(WorldCreatorUpdater)).Descendants.Select(typeInfo => (WorldCreatorUpdater)ReflectionHelper.CreateObject(typeInfo.Type, session));
         }
 
         ReflectionDictionary GetReflectionDictionary() {
-            BusinessClassesList externalModelBusinessClassesList = GetAdditionalClasses(Application.Modules);
+            var externalModelBusinessClassesList = GetAdditionalClasses(Application.Modules);
             Type persistentAssemblyInfoType = externalModelBusinessClassesList.FirstOrDefault(type1 => typeof(IPersistentAssemblyInfo).IsAssignableFrom(type1));
             if (persistentAssemblyInfoType == null)
                 throw new ArgumentNullException("Add a business object that implements " +
@@ -138,6 +134,8 @@ namespace Xpand.ExpressApp.WorldCreator {
             _dynamicModuleTypes = new CompileEngine().CompileModules(persistentAssemblyInfos, GetPath());
             foreach (var definedModule in _dynamicModuleTypes) {
                 moduleManager.AddModule(definedModule);
+                var module = moduleManager.Modules.FindModule(definedModule);
+                moduleManager.ControllersManager.RegisterControllerTypes(module.GetControllerTypes().ToArray());
             }
             unitOfWork.CommitChanges();
         }

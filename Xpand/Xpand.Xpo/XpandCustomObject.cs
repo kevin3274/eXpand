@@ -1,12 +1,15 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using DevExpress.Xpo;
 using DevExpress.Xpo.Metadata;
+using Xpand.Xpo.Converters.ValueConverters;
 
 namespace Xpand.Xpo {
     [Serializable]
     [NonPersistent]
     public abstract class XpandCustomObject : XPCustomObject, ISupportChangedMembers {
+        public const string ChangedPropertiesName = "ChangedProperties";
 #if MediumTrust
 		private Guid oid = Guid.Empty;
 		[Browsable(false), Key(true), NonCloneable]
@@ -25,7 +28,6 @@ namespace Xpand.Xpo {
 #endif
         private bool isDefaultPropertyAttributeInit;
         private XPMemberInfo defaultPropertyMemberInfo;
-        ChangedMemberCollector _changedMemberCollector;
 
         protected override void OnSaving() {
             base.OnSaving();
@@ -58,7 +60,6 @@ namespace Xpand.Xpo {
         public const string CancelTriggerObjectChangedName = "CancelTriggerObjectChanged";
         protected XpandCustomObject(Session session)
             : base(session) {
-            _changedMemberCollector = _changedMemberCollector ?? new ChangedMemberCollector(this);
         }
 
         [Browsable(false)]
@@ -66,10 +67,10 @@ namespace Xpand.Xpo {
         public bool IsNewObject {
             get { return Session.IsNewObject(this); }
         }
-        public override void AfterConstruction() {
-            _changedMemberCollector = _changedMemberCollector ?? new ChangedMemberCollector(this);
-            base.AfterConstruction();
-        }
+
+        [ValueConverter(typeof(NullValueConverter)), Persistent, Browsable(false)]
+        [Size(1)]
+        public HashSet<string> ChangedProperties { get; set; }
 
         protected override void TriggerObjectChanged(ObjectChangeEventArgs args) {
             if (!CancelTriggerObjectChanged)
@@ -99,11 +100,11 @@ namespace Xpand.Xpo {
         }
         protected override void OnSaved() {
             base.OnSaved();
-            _changedMemberCollector.Collect();
+            ChangedMemberCollector.CollectOnSave(this);
         }
         protected override void OnChanged(string propertyName, object oldValue, object newValue) {
             base.OnChanged(propertyName, oldValue, newValue);
-            _changedMemberCollector.Collect(propertyName);
+            ChangedMemberCollector.Collect(this, propertyName);
         }
         string TruncateValue(XPMemberInfo xpMemberInfo, string value) {
             if (xpMemberInfo.HasAttribute(typeof(SizeAttribute))) {
@@ -115,13 +116,6 @@ namespace Xpand.Xpo {
             return value;
         }
 
-        #region ISupportChangedMembers Member
-
-
-        #endregion
-        [Browsable(false)]
-        public ChangedMemberCollector ChangedMemberCollector {
-            get { return _changedMemberCollector; }
-        }
     }
+
 }

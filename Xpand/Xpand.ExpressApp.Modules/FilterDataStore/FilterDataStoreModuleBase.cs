@@ -7,6 +7,7 @@ using DevExpress.Data.Filtering;
 using DevExpress.ExpressApp;
 using DevExpress.ExpressApp.DC;
 using DevExpress.ExpressApp.Model;
+using DevExpress.ExpressApp.Xpo;
 using DevExpress.Xpo;
 using DevExpress.Xpo.DB;
 using DevExpress.Xpo.Metadata;
@@ -65,7 +66,7 @@ namespace Xpand.ExpressApp.FilterDataStore {
                     GetBaseTypeInfo(persistentType);
                     var xpClassInfo = XafTypesInfo.XpoTypeInfoSource.GetEntityClassInfo(persistentType.Type);
                     if (xpClassInfo.TableName != null && xpClassInfo.ClassType != null) {
-                        if (!IsMappedToParent(xpClassInfo))
+                        if (!IsMappedToParent(xpClassInfo) && !_tablesDictionary.ContainsKey(xpClassInfo.TableName))
                             _tablesDictionary.Add(xpClassInfo.TableName, xpClassInfo.ClassType);
                     }
                 }
@@ -185,7 +186,7 @@ namespace Xpand.ExpressApp.FilterDataStore {
         }
 
 
-        public BaseStatement[] FilterData(SelectStatement[] statements) {
+        public SelectStatement[] FilterData(SelectStatement[] statements) {
             return statements.Where(statement => !IsSystemTable(statement.TableName)).Select(ApplyCondition).ToArray();
         }
 
@@ -200,7 +201,7 @@ namespace Xpand.ExpressApp.FilterDataStore {
                 FilterProviderBase providerBase = FilterProviderManager.GetFilterProvider(objectType, provider.FilterMemberName, StatementContext.Select);
                 if (providerBase != null) {
                     IEnumerable<BinaryOperator> binaryOperators = GetBinaryOperators(extractor, providerBase);
-                    if (!FilterIsShared(statement.TableName, providerBase.Name) && binaryOperators.Count() == 0) {
+                    if (!FilterIsShared(statement.TableName, providerBase.Name) && !binaryOperators.Any()) {
                         string nodeAlias = GetNodeAlias(statement, providerBase);
                         if (!string.IsNullOrEmpty(nodeAlias))
                             ApplyCondition(statement, providerBase, nodeAlias);
@@ -330,8 +331,8 @@ namespace Xpand.ExpressApp.FilterDataStore {
 
         string GetNodeAlias(SelectStatement statement, string filterMemberName) {
             if (!_tablesDictionary.ContainsKey(statement.TableName)) {
-                var classInfo = Application.Model.BOModel.Select(mclass => XafTypesInfo.XpoTypeInfoSource.XPDictionary.QueryClassInfo(mclass.TypeInfo.Type)).Where(info => info != null && info.TableName == statement.TableName).FirstOrDefault();
-                if (classInfo != null)
+                var classInfo = Application.Model.BOModel.Select(mclass => Dictiorary.QueryClassInfo(mclass.TypeInfo.Type)).FirstOrDefault(info => info != null && info.TableName == statement.TableName);
+                if (classInfo != null && !_tablesDictionary.ContainsKey(classInfo.TableName))
                     _tablesDictionary.Add(classInfo.TableName, classInfo.ClassType);
                 else
                     throw new ArgumentException(statement.TableName);
@@ -368,8 +369,7 @@ namespace Xpand.ExpressApp.FilterDataStore {
 
             if (_tablesDictionary.ContainsKey(tableName)) {
                 IModelClass modelClass = GetModelClass(tableName);
-                if (modelClass != null && ((IModelClassDisabledDataStoreFilters)modelClass).DisabledDataStoreFilters.Where(
-                        childNode => childNode.Name == providerName).FirstOrDefault() != null) ret = true;
+                if (modelClass != null && ((IModelClassDisabledDataStoreFilters)modelClass).DisabledDataStoreFilters.FirstOrDefault(childNode => childNode.Name == providerName) != null) ret = true;
             }
             return ret;
         }

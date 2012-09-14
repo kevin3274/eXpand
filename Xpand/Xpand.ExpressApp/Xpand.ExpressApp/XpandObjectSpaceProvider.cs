@@ -1,46 +1,52 @@
 ﻿using System;
-using System.Collections.Generic;
 using DevExpress.ExpressApp;
-using DevExpress.ExpressApp.DC;
+using DevExpress.ExpressApp.Security;
+using DevExpress.ExpressApp.Security.ClientServer;
+using DevExpress.ExpressApp.Xpo;
 using DevExpress.Xpo;
 using DevExpress.Xpo.DB;
+using Xpand.ExpressApp.Model;
 using Xpand.Xpo;
 
 namespace Xpand.ExpressApp {
-    public class XpandObjectSpaceProvider : ObjectSpaceProvider, IXpandObjectSpaceProvider {
+    public class XpandObjectSpaceProvider : XPObjectSpaceProvider, IXpandObjectSpaceProvider {
+        readonly ISelectDataSecurityProvider _selectDataSecurityProvider;
+        IDataLayer _dataLayer;
+        bool _allowICommandChannelDoWithSecurityContext;
+        ClientSideSecurity? _clientSideSecurity;
 
 
-        public IXpoDataStoreProxy DataStoreProvider { get; set; }
+        public new IXpoDataStoreProxy DataStoreProvider { get; set; }
 
-        public XpandObjectSpaceProvider(IXpoDataStoreProxy provider)
+        public XpandObjectSpaceProvider(IXpoDataStoreProxy provider, ISelectDataSecurityProvider selectDataSecurityProvider)
             : base(provider) {
+            _selectDataSecurityProvider = selectDataSecurityProvider;
             DataStoreProvider = provider;
         }
 
+        public ISelectDataSecurityProvider SelectDataSecurityProvider {
+            get { return _selectDataSecurityProvider; }
+        }
 
-        protected override IObjectSpace CreateObjectSpaceCore(UnitOfWork unitOfWork, ITypesInfo typesInfo) {
-            var objectSpace = new XpandObjectSpace(new XpandUnitOfWork(unitOfWork.DataLayer), typesInfo) {
-                AsyncServerModeSourceResolveSession = AsyncServerModeSourceResolveSession,
-                AsyncServerModeSourceDismissSession = AsyncServerModeSourceDismissSession
-            };
-            return objectSpace;
+        public new IDataLayer WorkingDataLayer {
+            get { return _dataLayer; }
+        }
+
+        public bool AllowICommandChannelDoWithSecurityContext {
+            get { return _allowICommandChannelDoWithSecurityContext; }
+            set { _allowICommandChannelDoWithSecurityContext = value; }
+        }
+
+        protected override IObjectSpace CreateObjectSpaceCore() {
+            return new XpandObjectSpace(TypesInfo, XpoTypeInfoSource, CreateUnitOfWork);
         }
 
         IObjectSpace IObjectSpaceProvider.CreateUpdatingObjectSpace(Boolean allowUpdateSchema) {
             return CreateObjectSpace();
         }
 
-        private void AsyncServerModeSourceResolveSession(ResolveSessionEventArgs args) {
-            IDisposable[] disposableObjects;
-            IDataStore dataStore = DataStoreProvider.CreateWorkingStore(out disposableObjects);
-            args.Session = CreateUnitOfWork(dataStore, disposableObjects);
-        }
-
-        private void AsyncServerModeSourceDismissSession(ResolveSessionEventArgs args) {
-            var toDispose = args.Session as IDisposable;
-            if (toDispose != null) {
-                toDispose.Dispose();
-            }
+        public void SetClientSideSecurity(ClientSideSecurity? clientSideSecurity) {
+            _clientSideSecurity = clientSideSecurity;
         }
         public event EventHandler<CreatingWorkingDataLayerArgs> CreatingWorkingDataLayer;
 
@@ -48,22 +54,22 @@ namespace Xpand.ExpressApp {
             EventHandler<CreatingWorkingDataLayerArgs> handler = CreatingWorkingDataLayer;
             if (handler != null) handler(this, e);
         }
-
-        protected override IDataLayer CreateWorkingDataLayer(IDataStore workingDataStore) {
-            var creatingWorkingDataLayerArgs = new CreatingWorkingDataLayerArgs(workingDataStore);
+        protected override IDataLayer CreateDataLayer(IDataStore dataStore) {
+            var creatingWorkingDataLayerArgs = new CreatingWorkingDataLayerArgs(dataStore);
             OnCreatingWorkingDataLayer(creatingWorkingDataLayerArgs);
-            return creatingWorkingDataLayerArgs.DataLayer ?? base.CreateWorkingDataLayer(workingDataStore);
+            _dataLayer = creatingWorkingDataLayerArgs.DataLayer ?? base.CreateDataLayer(dataStore);
+            return _dataLayer;
         }
 
-        private UnitOfWork CreateUnitOfWork(IDataStore dataStore, IEnumerable<IDisposable> disposableObjects) {
-            var disposableObjectsList = new List<IDisposable>();
-            if (disposableObjects != null) {
-                disposableObjectsList.AddRange(disposableObjects);
-            }
+        private XpandUnitOfWork CreateUnitOfWork() {
+            var uow = new XpandUnitOfWork(DataLayer);
 
-            var dataLayer = new SimpleDataLayer(XPDictionary, dataStore);
-            disposableObjectsList.Add(dataLayer);
-            return new XpandUnitOfWork(dataLayer, disposableObjectsList.ToArray());
+            if (SelectDataSecurityProvider == null)
+                return uow;
+            if (!_clientSideSecurity.HasValue || _clientSideSecurity.Value == ClientSideSecurity.UIlevel)
+                return uow;
+            var currentObjectLayer = new SecuredSessionObjectLayer(_allowICommandChannelDoWithSecurityContext, uow, true, null, new SecurityRuleProvider(XPDictionary, _selectDataSecurityProvider.CreateSelectDataSecurity()), null);
+            return new XpandUnitOfWork(currentObjectLayer, uow);
         }
     }
 

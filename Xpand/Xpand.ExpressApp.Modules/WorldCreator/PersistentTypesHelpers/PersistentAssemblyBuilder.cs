@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using DevExpress.Data.Filtering;
 using DevExpress.ExpressApp;
+using DevExpress.ExpressApp.Xpo;
 using DevExpress.Xpo.DB;
 using Xpand.ExpressApp.WorldCreator.Core;
 using Xpand.ExpressApp.WorldCreator.Observers;
@@ -47,7 +47,7 @@ namespace Xpand.ExpressApp.WorldCreator.PersistentTypesHelpers {
 
         public PersistentAssemblyBuilder(IPersistentAssemblyInfo persistentAssemblyInfo) {
             _persistentAssemblyInfo = persistentAssemblyInfo;
-            _objectSpace = DevExpress.ExpressApp.ObjectSpace.FindObjectSpaceByObject(persistentAssemblyInfo);
+            _objectSpace = XPObjectSpace.FindObjectSpaceByObject(persistentAssemblyInfo);
         }
 
         public IPersistentAssemblyInfo PersistentAssemblyInfo {
@@ -62,7 +62,7 @@ namespace Xpand.ExpressApp.WorldCreator.PersistentTypesHelpers {
             return "a" + Guid.NewGuid().ToString().Replace("-", "");
         }
 
-        internal static PersistentAssemblyBuilder BuildAssembly(ObjectSpace objectSpace) {
+        internal static PersistentAssemblyBuilder BuildAssembly(XPObjectSpace objectSpace) {
             return BuildAssembly(objectSpace, GetUniqueAssemblyName());
         }
         public IObjectSpace ObjectSpace {
@@ -70,7 +70,7 @@ namespace Xpand.ExpressApp.WorldCreator.PersistentTypesHelpers {
         }
 
         internal static PersistentAssemblyBuilder BuildAssembly(string name) {
-            var objectSpace = new ObjectSpaceProvider(new MemoryDataStoreProvider()).CreateObjectSpace();
+            var objectSpace = new XPObjectSpaceProvider(new MemoryDataStoreProvider()).CreateObjectSpace();
             return BuildAssembly(objectSpace, name);
         }
 
@@ -87,7 +87,7 @@ namespace Xpand.ExpressApp.WorldCreator.PersistentTypesHelpers {
 
         public IClassInfoHandler CreateClasses(IEnumerable<string> classNames) {
             _persistentClassInfos = classNames.Select(s => {
-                var persistentClassInfo = (IPersistentClassInfo)(((ObjectSpace)_objectSpace).Session.FindObject(WCTypesInfo.Instance.FindBussinessObjectType<IPersistentClassInfo>(), CriteriaOperator.Parse("Name=?", s)) ?? _objectSpace.CreateWCObject<IPersistentClassInfo>());
+                var persistentClassInfo = (IPersistentClassInfo)((XPObjectSpace)_objectSpace).Session.FindObject(WCTypesInfo.Instance.FindBussinessObjectType<IPersistentClassInfo>(), CriteriaOperator.Parse("Name=?", s)) ?? _objectSpace.CreateWCObject<IPersistentClassInfo>();
                 persistentClassInfo.Name = s;
                 persistentClassInfo.PersistentAssemblyInfo = _persistentAssemblyInfo;
                 _persistentAssemblyInfo.PersistentClassInfos.Add(persistentClassInfo);
@@ -187,12 +187,8 @@ namespace Xpand.ExpressApp.WorldCreator.PersistentTypesHelpers {
         }
 
         void IClassInfoHandler.CreateTemplateInfos(Func<IPersistentClassInfo, List<ITemplateInfo>> func) {
-            foreach (var persistentClassInfo in _persistentClassInfos) {
-                List<ITemplateInfo> templateInfos = func.Invoke(persistentClassInfo);
-                if (templateInfos.Count > 1)
-                    Debug.Print("");
-
-                foreach (var templateInfo in templateInfos) {
+            foreach (IPersistentClassInfo persistentClassInfo in _persistentClassInfos) {
+                foreach (ITemplateInfo templateInfo in func.Invoke(persistentClassInfo)) {
                     persistentClassInfo.TemplateInfos.Add(templateInfo);
                 }
             }

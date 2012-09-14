@@ -23,7 +23,7 @@ namespace Xpand.ExpressApp.MemberLevelSecurity.Win.Controllers {
 
         protected override void OnActivated() {
             base.OnActivated();
-            if (!((ISecurityComplex)SecuritySystem.Instance).IsNewSecuritySystem()) {
+            if (!((IRoleTypeProvider)SecuritySystem.Instance).IsNewSecuritySystem()) {
                 View.ControlsCreated += View_OnControlsCreated;
                 View.CurrentObjectChanged += View_CurrentObjectChanged;
             }
@@ -36,7 +36,7 @@ namespace Xpand.ExpressApp.MemberLevelSecurity.Win.Controllers {
 
         protected override void OnDeactivated() {
             base.OnDeactivated();
-            if (!((ISecurityComplex)SecuritySystem.Instance).IsNewSecuritySystem()) {
+            if (!((IRoleTypeProvider)SecuritySystem.Instance).IsNewSecuritySystem()) {
                 View.ControlsCreated -= View_OnControlsCreated;
                 View.CurrentObjectChanged -= View_CurrentObjectChanged;
             }
@@ -67,7 +67,7 @@ namespace Xpand.ExpressApp.MemberLevelSecurity.Win.Controllers {
         }
 
         bool GetCanRead(string name) {
-            bool canRead = DataManipulationRight.CanRead(View.ObjectTypeInfo.Type, name, View.CurrentObject, null);
+            bool canRead = DataManipulationRight.CanRead(View.ObjectTypeInfo.Type, name, View.CurrentObject, null, View.ObjectSpace);
             bool fit = ((MemberLevelObjectAccessComparer)ObjectAccessComparerBase.CurrentComparer).Fit(View.CurrentObject, View.ObjectTypeInfo.FindMember(name), MemberOperation.Read);
             return !fit || canRead;
         }

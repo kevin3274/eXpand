@@ -4,30 +4,78 @@ using System.ComponentModel;
 using System.Configuration;
 using System.Web;
 using DevExpress.ExpressApp;
+using DevExpress.ExpressApp.Core;
+using DevExpress.ExpressApp.Layout;
 using DevExpress.ExpressApp.Utils;
 using DevExpress.ExpressApp.Web;
 using DevExpress.Persistent.Base;
 using DevExpress.Xpo.DB;
 using Xpand.ExpressApp.Core;
+using Xpand.ExpressApp.Model;
 using Xpand.ExpressApp.SystemModule;
+using Xpand.ExpressApp.Web.FriendlyUrl;
+using Xpand.ExpressApp.Web.Layout;
 using Xpand.ExpressApp.Web.SystemModule;
 
 
 namespace Xpand.ExpressApp.Web {
-    public partial class XpandWebApplication : WebApplication, ISupportModelsManager, ISupportConfirmationRequired, ISupportAfterViewShown, ISupportLogonParameterStore, ISupportFullConnectionString, IXafApplication {
+    public class XpandWebApplication : WebApplication, IXafApplication {
+        ApplicationModulesManager _applicationModulesManager;
+
         protected XpandWebApplication() {
-            InitializeComponent();
             DetailViewCreating += OnDetailViewCreating;
             ListViewCreating += OnListViewCreating;
         }
+
+        string IXafApplication.ModelAssemblyFilePath {
+            get { return GetModelAssemblyFilePath(); }
+        }
+
+        protected virtual void OnUserDifferencesLoaded(EventArgs e) {
+            EventHandler handler = UserDifferencesLoaded;
+            if (handler != null) handler(this, e);
+        }
+
+        protected override LayoutManager CreateLayoutManagerCore(bool simple) {
+            return new XpandLayoutManager();
+        }
+
+        protected override bool SupportMasterDetailMode {
+            get { return true; }
+        }
+
+        protected override IHttpRequestManager CreateHttpRequestManager() {
+            return ((IModelOptionsFriendlyUrl)Model.Options).EnableFriendlyUrl ? new XpandHttpRequestManager() : base.CreateHttpRequestManager();
+        }
+
+        protected override void LoadUserDifferences() {
+            base.LoadUserDifferences();
+            OnUserDifferencesLoaded(EventArgs.Empty);
+        }
+
+        protected override void OnSetupComplete() {
+            base.OnSetupComplete();
+            var xpandObjectSpaceProvider = (ObjectSpaceProvider as XpandObjectSpaceProvider);
+            if (xpandObjectSpaceProvider != null)
+                xpandObjectSpaceProvider.SetClientSideSecurity(((IModelOptionsClientSideSecurity)Model.Options).ClientSideSecurity);
+        }
+
+        ApplicationModulesManager IXafApplication.ApplicationModulesManager {
+            get { return _applicationModulesManager; }
+        }
+
+        public event EventHandler UserDifferencesLoaded;
+
+        protected override ApplicationModulesManager CreateApplicationModulesManager(ControllersManager controllersManager) {
+            _applicationModulesManager = base.CreateApplicationModulesManager(controllersManager);
+            return _applicationModulesManager;
+        }
+
         protected override void OnLoggedOn(LogonEventArgs args) {
             base.OnLoggedOn(args);
             ((ShowViewStrategy)ShowViewStrategy).CollectionsEditMode = DevExpress.ExpressApp.Editors.ViewEditMode.Edit;
         }
-        protected override ModuleTypeList GetDefaultModuleTypes() {
-            var result = new List<Type>(base.GetDefaultModuleTypes()) { typeof(XpandSystemModule), typeof(XpandSystemAspNetModule) };
-            return new ModuleTypeList(result.ToArray());
-        }
+
         protected override void OnCreateCustomObjectSpaceProvider(CreateCustomObjectSpaceProviderEventArgs args) {
             base.OnCreateCustomObjectSpaceProvider(args);
             if (args.ObjectSpaceProvider == null)
@@ -38,11 +86,11 @@ namespace Xpand.ExpressApp.Web {
             get { return base.ConnectionString; }
             set {
                 base.ConnectionString = value;
-                ((ISupportFullConnectionString)this).ConnectionString = value;
+                ((IXafApplication)this).ConnectionString = value;
             }
         }
 
-        string ISupportFullConnectionString.ConnectionString { get; set; }
+        string IXafApplication.ConnectionString { get; set; }
         public event EventHandler<ViewShownEventArgs> AfterViewShown;
 
         public virtual void OnAfterViewShown(Frame frame, Frame sourceFrame) {
@@ -81,16 +129,11 @@ namespace Xpand.ExpressApp.Web {
         void OnDetailViewCreating(object sender, DetailViewCreatingEventArgs args) {
             args.View = ViewFactory.CreateDetailView(this, args.ViewID, args.Obj, args.ObjectSpace, args.IsRoot);
         }
-        public ApplicationModelsManager ModelsManager {
-            get { return modelsManager; }
-        }
-
 
         protected XpandWebApplication(IContainer container) {
             container.Add(this);
-            InitializeComponent();
-        }
 
+        }
 
         public new SettingsStorage CreateLogonParameterStoreCore() {
             return base.CreateLogonParameterStoreCore();

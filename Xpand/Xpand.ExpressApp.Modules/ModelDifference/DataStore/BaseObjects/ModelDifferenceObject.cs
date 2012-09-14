@@ -20,7 +20,7 @@ using Xpand.Xpo;
 namespace Xpand.ExpressApp.ModelDifference.DataStore.BaseObjects {
     [RuleCombinationOfPropertiesIsUnique("MDO_Unique_Name_Application", DefaultContexts.Save, "Name,PersistentApplication")]
     [CreatableItem(false), NavigationItem("Default"), HideFromNewMenu]
-    [Custom("Caption", Caption), Custom("IsClonable", "True"), VisibleInReports(false)]
+    [ModelDefault("Caption", Caption), ModelDefault("IsClonable", "True"), VisibleInReports(false)]
     public class ModelDifferenceObject : XpandCustomObject, IXpoModelDifference, ISupportSequenceObject {
         public const string Caption = "Application Difference";
         DifferenceType _differenceType;
@@ -59,7 +59,7 @@ namespace Xpand.ExpressApp.ModelDifference.DataStore.BaseObjects {
         }
 
         bool GetttingNonAppModels(IEnumerable<ModelDifferenceObject> differenceObjects) {
-            return differenceObjects.Where(o => o is UserModelDifferenceObject || o is RoleModelDifferenceObject).Count() > 0;
+            return differenceObjects.Any(o => o is UserModelDifferenceObject || o is RoleModelDifferenceObject);
         }
         [ImmediatePostData]
         [VisibleInListView(false)]
@@ -127,7 +127,7 @@ namespace Xpand.ExpressApp.ModelDifference.DataStore.BaseObjects {
 
         #region IXpoModelDifference Members
 
-        [Custom("GroupIndex", "0"), NonCloneable, VisibleInDetailView(false)]
+        [ModelDefault("GroupIndex", "0"), NonCloneable, VisibleInDetailView(false)]
         public DifferenceType DifferenceType {
             get { return _differenceType; }
             set { SetPropertyValue("DifferenceType", ref _differenceType, value); }
@@ -147,7 +147,7 @@ namespace Xpand.ExpressApp.ModelDifference.DataStore.BaseObjects {
             set { SetPropertyValue(MethodBase.GetCurrentMethod().Name.Replace("set_", ""), ref _disabled, value); }
         }
 
-        [Custom("AllowEdit", "false"), RuleRequiredField(null, DefaultContexts.Save)]
+        [ModelDefault("AllowEdit", "false"), RuleRequiredField(null, DefaultContexts.Save)]
         public DateTime DateCreated {
             get { return dateCreated; }
             set { SetPropertyValue(MethodBase.GetCurrentMethod().Name.Replace("set_", ""), ref dateCreated, value); }
@@ -182,7 +182,7 @@ namespace Xpand.ExpressApp.ModelDifference.DataStore.BaseObjects {
         }
 
         AspectObject GetActiveAspect(string preferredAspect) {
-            return AspectObjects.Where(o => o.Name == preferredAspect).SingleOrDefault();
+            return AspectObjects.SingleOrDefault(o => o.Name == preferredAspect);
         }
         #endregion
         protected override void OnSaving() {
@@ -216,7 +216,12 @@ namespace Xpand.ExpressApp.ModelDifference.DataStore.BaseObjects {
             var applicationBase = GetModel(master);
             new ModelXmlReader().ReadFromModel(applicationBase, model);
             CreateAspectsCore(model);
-            if (applicationBase != null) master.RemoveLayer(applicationBase);
+            if (applicationBase != null) {
+                var lastLayer = master.LastLayer;
+                ModelApplicationHelper.RemoveLayer(master);
+                ModelApplicationHelper.RemoveLayer(master);
+                ModelApplicationHelper.AddLayer(master,lastLayer);
+            }
         }
 
         public void CreateAspects(ModelApplicationBase model) {
@@ -248,7 +253,7 @@ namespace Xpand.ExpressApp.ModelDifference.DataStore.BaseObjects {
         }
 
         AspectObject GetActiveAspect(ModelApplicationBase modelApplicationBase) {
-            return AspectObjects.Where(o => o.Name == GetAspectName(modelApplicationBase.CurrentAspect)).FirstOrDefault();
+            return AspectObjects.FirstOrDefault(o => o.Name == GetAspectName(modelApplicationBase.CurrentAspect));
         }
 
         long ISupportSequenceObject.Sequence {

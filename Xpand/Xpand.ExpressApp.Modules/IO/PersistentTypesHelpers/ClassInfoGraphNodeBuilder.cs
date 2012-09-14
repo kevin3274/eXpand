@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using DevExpress.ExpressApp;
 using DevExpress.ExpressApp.DC;
+using DevExpress.ExpressApp.Xpo;
 using DevExpress.Persistent.Base;
 using DevExpress.Xpo;
 using Xpand.Persistent.Base.ImportExport;
+using Xpand.Xpo;
 using TypesInfo = Xpand.ExpressApp.IO.Core.TypesInfo;
 
 namespace Xpand.ExpressApp.IO.PersistentTypesHelpers {
@@ -20,7 +22,7 @@ namespace Xpand.ExpressApp.IO.PersistentTypesHelpers {
         public void Generate(ISerializationConfiguration serializationConfiguration) {
             var typeToSerialize = serializationConfiguration.TypeToSerialize;
             var castTypeToTypeInfo = XafTypesInfo.CastTypeToTypeInfo(typeToSerialize);
-            var objectSpace = ObjectSpace.FindObjectSpaceByObject(serializationConfiguration);
+            var objectSpace = XPObjectSpace.FindObjectSpaceByObject(serializationConfiguration);
             _serializationConfigurationGroup = serializationConfiguration.SerializationConfigurationGroup;
             if (_serializationConfigurationGroup == null)
                 throw new NullReferenceException("_serializationConfigurationGroup");
@@ -41,9 +43,9 @@ namespace Xpand.ExpressApp.IO.PersistentTypesHelpers {
         }
 
         void ResetDefaultKeyWhenMultiple(IEnumerable<IClassInfoGraphNode> classInfoGraphNodes) {
-            var nonDefaultKey = classInfoGraphNodes.Skip(1).Where(node => node.Key).FirstOrDefault();
+            var nonDefaultKey = classInfoGraphNodes.Skip(1).FirstOrDefault(node => node.Key);
             if (nonDefaultKey != null) {
-                classInfoGraphNodes.Where(graphNode => graphNode.Key).First().Key= false;
+                classInfoGraphNodes.First(graphNode => graphNode.Key).Key = false;
             }
         }
 
@@ -68,7 +70,7 @@ namespace Xpand.ExpressApp.IO.PersistentTypesHelpers {
         }
 
         void Generate(IObjectSpace objectSpace, Type typeToSerialize) {
-            if (!SerializationConfigurationQuery.ConfigurationExists(((ObjectSpace)objectSpace).Session, typeToSerialize, _serializationConfigurationGroup)) {
+            if (!SerializationConfigurationQuery.ConfigurationExists(((XPObjectSpace)objectSpace).Session, typeToSerialize, _serializationConfigurationGroup)) {
                 var serializationConfiguration =
                     (ISerializationConfiguration)
                     objectSpace.CreateObject(TypesInfo.Instance.SerializationConfigurationType);
@@ -102,7 +104,7 @@ namespace Xpand.ExpressApp.IO.PersistentTypesHelpers {
         SerializationStrategy GetSerializationStrategy(IMemberInfo memberInfo, SerializationStrategy serializationStrategy) {
             if (memberInfo.MemberTypeInfo.IsPersistent) {
                 var attribute = memberInfo.MemberTypeInfo.FindAttribute<SerializationStrategyAttribute>();
-                if (attribute!= null) {
+                if (attribute != null) {
                     return attribute.SerializationStrategy;
                 }
             }
@@ -113,13 +115,14 @@ namespace Xpand.ExpressApp.IO.PersistentTypesHelpers {
         IEnumerable<IMemberInfo> GetMemberInfos(ITypeInfo typeInfo) {
             _excludedMembers = new[] {
                                          XPObject.Fields.OptimisticLockField.PropertyName,
-                                         XPObject.Fields.ObjectType.PropertyName
+                                         XPObject.Fields.ObjectType.PropertyName,
+                                         XpandCustomObject.ChangedPropertiesName
                                      };
             return typeInfo.Members.Where(info => IsPersistent(info) && !(_excludedMembers.Contains(info.Name))).OrderByDescending(memberInfo => memberInfo.IsKey);
         }
 
         bool IsPersistent(IMemberInfo info) {
-            return (info.IsPersistent || (info.IsList &&info.ListElementTypeInfo != null&&info.ListElementTypeInfo.IsPersistent));
+            return (info.IsPersistent || (info.IsList && info.ListElementTypeInfo != null && info.ListElementTypeInfo.IsPersistent));
         }
 
         public void ApplyStrategy(SerializationStrategy serializationStrategy, ISerializationConfiguration serializationConfiguration) {
@@ -127,7 +130,7 @@ namespace Xpand.ExpressApp.IO.PersistentTypesHelpers {
             var infoGraphNodes = serializationConfigurationGroup.Configurations.SelectMany(configuration => configuration.SerializationGraph);
             var classInfoGraphNodes = infoGraphNodes.Where(node => node.TypeName == serializationConfiguration.TypeToSerialize.Name);
             foreach (var classInfoGraphNode in classInfoGraphNodes) {
-                classInfoGraphNode.SerializationStrategy=serializationStrategy;
+                classInfoGraphNode.SerializationStrategy = serializationStrategy;
             }
         }
     }

@@ -1,29 +1,40 @@
 using System;
+using DevExpress.ExpressApp;
+using DevExpress.ExpressApp.Web;
 using System.Collections.Generic;
 using DevExpress.ExpressApp.Templates;
-using DevExpress.ExpressApp.Web.Controls;
-using DevExpress.ExpressApp.Web.Templates.ActionContainers;
 using DevExpress.ExpressApp.Web.Layout;
 using DevExpress.ExpressApp.Templates.ActionContainers;
+using DevExpress.ExpressApp.Web.Templates.ActionContainers;
 
 [ParentControlCssClass("NestedFrameControl")]
 public partial class NestedFrameControl : System.Web.UI.UserControl, IFrameTemplate, ISupportActionsToolbarVisibility, IDynamicContainersTemplate, IViewHolder {
     private ContextActionsMenu contextMenu;
     private ActionContainerCollection actionContainers = new ActionContainerCollection();
-    DevExpress.ExpressApp.View view;
-    protected override void OnPreRender(EventArgs e) {
-        base.OnPreRender(e);
-        if (ToolBar != null) {
-            ToolBar.Visible = actionsToolbarVisibility == ActionsToolbarVisibility.Hide ? false : true;
+    private View view;
+    private void ToolBar_MenuItemsCreated(object sender, EventArgs e) {
+        DevExpress.Web.ASPxMenu.ASPxMenu menu = ((ActionContainerHolder)sender).Menu;
+        if (!menu.Visible) {
+            viewSiteControl.Control.CssClass += " WithoutToolbar";
+        }
+        if (View is ListView) {
+            menu.BorderBottom.BorderWidth = 0;
         }
     }
     public NestedFrameControl() {
         contextMenu = new ContextActionsMenu(this, "Edit", "RecordEdit", "ListView");
         actionContainers.AddRange(contextMenu.Containers);
     }
+    protected override void OnLoad(EventArgs e) {
+        base.OnLoad(e);
+        if (ToolBar != null) {
+            ToolBar.MenuItemsCreated += new EventHandler(ToolBar_MenuItemsCreated);
+        }
+    }
     //B157146, B157117
     public override void Dispose() {
         if (ToolBar != null) {
+            ToolBar.MenuItemsCreated -= new EventHandler(ToolBar_MenuItemsCreated);
             ToolBar.Dispose();
             ToolBar = null;
         }
@@ -35,7 +46,7 @@ public partial class NestedFrameControl : System.Web.UI.UserControl, IFrameTempl
     }
     #region IFrameTemplate Members
     public IActionContainer DefaultContainer {
-        get { return /*ViewContainer*/ null; }
+        get { return ToolBar.FindActionContainerById("View"); }
     }
     public ICollection<IActionContainer> GetContainers() {
         return actionContainers.ToArray();
@@ -56,13 +67,9 @@ public partial class NestedFrameControl : System.Web.UI.UserControl, IFrameTempl
     }
 
     #region IActionBarVisibilityManager Members
-    private ActionsToolbarVisibility actionsToolbarVisibility = ActionsToolbarVisibility.Default;
-    public ActionsToolbarVisibility ActionsToolbarVisibility {
-        get {
-            return actionsToolbarVisibility;
-        }
-        set {
-            actionsToolbarVisibility = value;
+    public void SetVisible(bool isVisible) {
+        if (ToolBar != null) {
+            ToolBar.Visible = isVisible;
         }
     }
     #endregion

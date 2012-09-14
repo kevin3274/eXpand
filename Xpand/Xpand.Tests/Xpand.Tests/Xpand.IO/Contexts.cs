@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using DevExpress.ExpressApp;
+using DevExpress.ExpressApp.Xpo;
 using DevExpress.Persistent.BaseImpl;
 using DevExpress.Xpo;
 using DevExpress.Xpo.Metadata;
@@ -15,33 +16,36 @@ using Xpand.ExpressApp.WorldCreator.Core;
 using Xpand.ExpressApp.WorldCreator.PersistentTypesHelpers;
 using Xpand.Persistent.BaseImpl.ImportExport;
 using Xpand.Tests.Xpand.WorldCreator;
-using Xpand.Persistent.Base.General;
 using Xpand.Xpo.Converters.ValueConverters;
 
 namespace Xpand.Tests.Xpand.IO {
     public abstract class With_Customer_Orders : With_Isolations {
-        protected static Session Session;
+        protected static UnitOfWork UnitOfWork;
         protected static Type CompileModule;
         protected static Type OrderType;
-        protected static ObjectSpace ObjectSpace;
+        protected static XPObjectSpace XPObjectSpace;
         protected static Type CustomerType;
 
         Establish context = () => {
             //            var artifactHandler = new TestAppLication<ClassInfoGraphNode>().Setup();
-            ObjectSpace = (ObjectSpace)ObjectSpaceInMemory.CreateNew();
-            Session = ObjectSpace.Session;
-            var persistentAssemblyBuilder = PersistentAssemblyBuilder.BuildAssembly(ObjectSpace, "a" + Guid.NewGuid().ToString().Replace("-", ""));
+            XPObjectSpace = (XPObjectSpace)ObjectSpaceInMemory.CreateNew();
+            UnitOfWork = (UnitOfWork)XPObjectSpace.Session;
+            var persistentAssemblyBuilder = PersistentAssemblyBuilder.BuildAssembly(XPObjectSpace, "a" + Guid.NewGuid().ToString().Replace("-", ""));
             var classHandler = persistentAssemblyBuilder.CreateClasses(new[] { "Customer", "Order" });
-            classHandler.CreateReferenceMembers(info => info.Name == "Customer" ? new[] { typeof(User) } : null, true);
+            classHandler.CreateReferenceMembers(info => info.Name == "Customer" ? new[] { typeof(User) } : null, false);
             classHandler.CreateReferenceMembers(info => info.Name == "Order" ? info.PersistentAssemblyInfo.PersistentClassInfos.Where(classInfo => classInfo.Name == "Customer") : null, true);
             classHandler.CreateSimpleMembers<string>(persistentClassInfo => persistentClassInfo.Name == "Customer" ? new[] { "Name" } : null);
-            ObjectSpace.CommitChanges();
+            XPObjectSpace.CommitChanges();
             CompileModule = new CompileEngine().CompileModule(persistentAssemblyBuilder.PersistentAssemblyInfo, Path.GetDirectoryName(Application.ExecutablePath));
-            CustomerType = CompileModule.Assembly.GetTypes().Where(type => type.Name == "Customer").Single();
-            OrderType = CompileModule.Assembly.GetTypes().Where(type => type.Name == "Order").Single();
-            XafTypesInfo.Instance.CreateCollection(typeof(User), CustomerType, "User", XafTypesInfo.XpoTypeInfoSource.XPDictionary);
-            
-            
+            CustomerType = CompileModule.Assembly.GetTypes().Single(type => type.Name == "Customer");
+            OrderType = CompileModule.Assembly.GetTypes().Single(type => type.Name == "Order");
+            XafTypesInfo.Instance.RegisterEntity(typeof(User));
+            XafTypesInfo.Instance.RegisterEntity(CustomerType);
+            XafTypesInfo.Instance.RegisterEntity(OrderType);
+            //            var findMember = XafTypesInfo.Instance.FindTypeInfo(CustomerType).FindMember("User");
+            //            XafTypesInfo.Instance.CreateBothPartMembers(CustomerType, typeof(User), XpoTypesInfoHelper.GetXpoTypeInfoSource().XPDictionary);
+
+
         };
     }
     public interface IOrder {
@@ -92,8 +96,8 @@ namespace Xpand.Tests.Xpand.IO {
             XafTypesInfo.Instance.RegisterEntity(typeof(ImagePropertyObject));
             IOArtifacts = () => new[] { typeof(IOModule) };
             Isolate.Fake.IOTypesInfo();
-            Type type1 = typeof (IOError);
-            var types =type1.Assembly.GetTypes().Where(type => (type.Namespace + "").StartsWith(type1.Namespace + "")).ToList();
+            Type type1 = typeof(IOError);
+            var types = type1.Assembly.GetTypes().Where(type => (type.Namespace + "").StartsWith(type1.Namespace + "")).ToList();
             TypesInfo.Instance.RegisterTypes(types.ToList());
             foreach (var type in types) {
                 XafTypesInfo.Instance.RegisterEntity(type);

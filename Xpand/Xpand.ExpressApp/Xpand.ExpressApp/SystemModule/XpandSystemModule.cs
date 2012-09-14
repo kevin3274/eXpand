@@ -5,9 +5,9 @@ using System.Drawing;
 using System.Linq;
 using DevExpress.ExpressApp;
 using DevExpress.ExpressApp.DC;
-using DevExpress.ExpressApp.MiddleTier;
 using DevExpress.ExpressApp.Model;
 using DevExpress.ExpressApp.Model.Core;
+using DevExpress.ExpressApp.Security.ClientServer;
 using DevExpress.ExpressApp.Updating;
 using DevExpress.ExpressApp.Utils;
 using DevExpress.Persistent.Base;
@@ -44,6 +44,8 @@ namespace Xpand.ExpressApp.SystemModule {
         public override void Setup(ApplicationModulesManager moduleManager) {
             base.Setup(moduleManager);
             if (RuntimeMode) {
+                AddToAdditionalExportedTypes(new[] { "Xpand.Persistent.BaseImpl.SequenceObject" });
+                SequenceObjectType = AdditionalExportedTypes.Single(type => type.FullName == "Xpand.Persistent.BaseImpl.SequenceObject");
                 InitializeSequenceGenerator();
             }
         }
@@ -52,7 +54,6 @@ namespace Xpand.ExpressApp.SystemModule {
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Type SequenceObjectType { get; set; }
-
 
         public override void CustomizeTypesInfo(ITypesInfo typesInfo) {
             base.CustomizeTypesInfo(typesInfo);
@@ -85,10 +86,12 @@ namespace Xpand.ExpressApp.SystemModule {
         }
 
         public void InitializeSequenceGenerator() {
+            if (SequenceObjectType == null)
+                return;
             try {
-                if (SequenceObjectType == null)
+                if (!typeof(ISequenceObject).IsAssignableFrom(SequenceObjectType))
                     throw new TypeLoadException("Please make sure XPand.Persistent.BaseImpl is referenced from your application project and has its Copy Local==true");
-                if (Application != null && Application.ObjectSpaceProvider != null && !(Application.ObjectSpaceProvider is MiddleTierClientObjectSpaceProvider)) {
+                if (Application != null && Application.ObjectSpaceProvider != null && !(Application.ObjectSpaceProvider is DataServerObjectSpaceProvider)) {
                     var connectionString = ((IXafApplication)Application).RaiseEstablishingConnection();
                     SequenceGenerator.Initialize(connectionString, SequenceObjectType);
                 }
@@ -105,23 +108,6 @@ namespace Xpand.ExpressApp.SystemModule {
             return XafTypesInfo.Instance.FindTypeInfo(typeof(AttributeRegistrator)).Descendants.Select(typeInfo => (AttributeRegistrator)ReflectionHelper.CreateObject(typeInfo.Type)).SelectMany(registrator => registrator.GetAttributes(type));
         }
 
-        public override void Setup(XafApplication application) {
-            base.Setup(application);
-            try {
-                AddToAdditionalExportedTypes(new[] { "Xpand.Persistent.BaseImpl.SequenceObject" });
-                SequenceObjectType = AdditionalExportedTypes.Single(type => type.FullName == "Xpand.Persistent.BaseImpl.SequenceObject");
-            } catch (Exception e) {
-                Tracing.Tracer.LogError(e);
-            }
-
-            application.CreateCustomCollectionSource += LinqCollectionSourceHelper.CreateCustomCollectionSource;
-            application.SetupComplete +=
-                (sender, args) =>
-                RuntimeMemberBuilder.AddFields(application.Model, Dictiorary);
-            application.LoggedOn +=
-                (sender, args) =>
-                RuntimeMemberBuilder.AddFields(application.Model, Dictiorary);
-        }
 
 
         public override void AddGeneratorUpdaters(ModelNodesGeneratorUpdaters updaters) {
@@ -142,6 +128,7 @@ namespace Xpand.ExpressApp.SystemModule {
             extenders.Add<IModelClass, IModelClassProccessViewShortcuts>();
             extenders.Add<IModelDetailView, IModelDetailViewProccessViewShortcuts>();
             extenders.Add<IModelMember, IModelMemberEx>();
+            extenders.Add<IModelOptions, IModelOptionsClientSideSecurity>();
         }
 
         public void ConvertXml(ConvertXmlParameters parameters) {

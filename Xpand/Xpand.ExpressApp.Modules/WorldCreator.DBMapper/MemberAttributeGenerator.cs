@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using DevExpress.ExpressApp;
+using DevExpress.ExpressApp.Xpo;
 using DevExpress.Xpo.DB;
 using Xpand.ExpressApp.WorldCreator.Core;
 using Xpand.Persistent.Base.PersistentMetaData;
@@ -17,7 +18,7 @@ namespace Xpand.ExpressApp.WorldCreator.DBMapper {
 
 
         public MemberAttributeGenerator(MemberGeneratorInfo memberGeneratorInfo, ClassGeneratorInfo classGeneratorInfo) {
-            _objectSpace = ObjectSpace.FindObjectSpaceByObject(memberGeneratorInfo.PersistentMemberInfo);
+            _objectSpace = XPObjectSpace.FindObjectSpaceByObject(memberGeneratorInfo.PersistentMemberInfo);
             _persistentMemberInfo = memberGeneratorInfo.PersistentMemberInfo;
             _column = memberGeneratorInfo.DbColumn;
             _isPrimaryKey = CalculatePrimaryKey(memberGeneratorInfo, classGeneratorInfo);
@@ -42,7 +43,7 @@ namespace Xpand.ExpressApp.WorldCreator.DBMapper {
                 if (_isPrimaryKey) {
                     persistentAttributeInfos.Add(GetPersistentKeyAttribute());
                 }
-                if ((IsSimpleForeignKey() && !isCompoundPrimaryKey) || ((isCompoundPrimaryKey && IsForeignKey())))
+                if ((!IsSelfRefOnTheKey(_column, _isPrimaryKey)) && ((IsSimpleForeignKey() && !isCompoundPrimaryKey) || ((isCompoundPrimaryKey && IsForeignKey()))))
                     persistentAttributeInfos.Add(GetPersistentAssociationAttribute());
             }
             var persistentPersistentAttribute = GetPersistentPersistentAttribute();
@@ -56,12 +57,19 @@ namespace Xpand.ExpressApp.WorldCreator.DBMapper {
             return templateType == TemplateType.XPOneToOnePropertyMember || templateType == TemplateType.XPOneToOneReadOnlyPropertyMember;
         }
 
+        bool IsSelfRefOnTheKey(DBColumn dbColumn, bool isPrimaryKey) {
+            if (!isPrimaryKey)
+                return false;
+            return _dbTable.ForeignKeys.FirstOrDefault(
+                key => key.PrimaryKeyTable == _dbTable.Name && key.Columns.Contains(dbColumn.Name)) != null;
+        }
+
         bool IsForeignKey() {
-            return _dbTable.ForeignKeys.Where(key => key.Columns.Contains(_column.Name)).FirstOrDefault() != null && !_isPrimaryKey;
+            return _dbTable.ForeignKeys.FirstOrDefault(key => key.Columns.Contains(_column.Name)) != null && !_isPrimaryKey;
         }
 
         bool IsCompoundForeignKey() {
-            return _dbTable.ForeignKeys.Where(key => key.Columns.Contains(_column.Name) && key.Columns.Count > 1).FirstOrDefault() != null;
+            return _dbTable.ForeignKeys.FirstOrDefault(key => key.Columns.Contains(_column.Name) && key.Columns.Count > 1) != null;
         }
 
         IPersistentPersistentAttribute GetPersistentPersistentAttribute() {
@@ -77,7 +85,7 @@ namespace Xpand.ExpressApp.WorldCreator.DBMapper {
         }
 
         bool IsSimpleForeignKey() {
-            return _dbTable.ForeignKeys.Where(key => key.Columns.Count == 1 && key.Columns.Contains(_column.Name)).FirstOrDefault() != null;
+            return _dbTable.ForeignKeys.FirstOrDefault(key => key.Columns.Count == 1 && key.Columns.Contains(_column.Name)) != null;
         }
 
         bool IsCompoundPrimaryKey() {
