@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
+  <metadata>
+    <id>eXpandFilterDatastore</id>
+    <version>$Version$</version>
+    <title>DevExpress eXpand Framework FilterDatastore Module (Core)</title>
+    <authors>eXpand</authors>
+    <owners>eXpand</owners>
+    <iconUrl>http://www.expressapp.ru/expand/expand.png</iconUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>FilterDatastore Module (Core) / eXpand Framework</description>
+    <summary>FilterDatastore Module (Core) / eXpand Framework</summary>
+    <copyright>eXpandFramework.com</copyright>
+    <tags>DevExpress, eXpand</tags>
+    <dependencies>
+      <dependency id="eXpandExpressApp" version="[$Version$]" />
+    </dependencies>
+  </metadata>
+  <files>
+	<file src="\Build\Temp\Xpand.ExpressApp.FilterDataStore.dll" target="lib\net35\"/>
+	<file src="\Build\Temp\Xpand.ExpressApp.FilterDataStore.pdb" target="lib\net35\" />
+	<file src="\Build\Temp\Xpand.Persistent.BaseImpl.dll" target="lib\net35\"/>
+	<file src="\Build\Temp\Xpand.Persistent.BaseImpl.pdb" target="lib\net35\" />
+  </files>
+  
+</package>

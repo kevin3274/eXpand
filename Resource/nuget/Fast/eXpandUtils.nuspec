@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
+  <metadata>
+    <id>eXpandUtils</id>
+    <version>$Version$</version>
+    <title>DevExpress eXpand Framework Utils</title>
+    <authors>eXpand</authors>
+    <owners>eXpand</owners>
+    <iconUrl>http://www.expressapp.ru/expand/expand.png</iconUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Utils / eXpand Framework</description>
+    <summary>Utils / eXpand Framework</summary>
+    <copyright>eXpandFramework.com</copyright>
+    <language>zh-TW</language>
+    <tags>DevExpress, eXpand</tags>
+  </metadata>
+  
+    <files>
+	<file src="\Build\Temp\Xpand.Utils.dll" target="lib\net35\"/>
+	<file src="\Build\Temp\Xpand.Utils.pdb" target="lib\net35\" />
+  </files>
+</package>
